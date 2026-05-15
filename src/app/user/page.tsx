@@ -22,8 +22,8 @@ export default function UserPage() {
 
   const set =
     (key: keyof typeof fields) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setFields((prev) => ({ ...prev, [key]: e.target.value }));
+      (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+        setFields((prev) => ({ ...prev, [key]: e.target.value }));
 
   if (state.success) {
     return (
@@ -114,7 +114,7 @@ export default function UserPage() {
 
           <div>
             <label htmlFor="stud_age" className="block text-sm font-medium text-gray-700">
-              Student Age
+              Student Age <span className="text-red-500">*</span>
             </label>
             <input
               id="stud_age"
@@ -122,7 +122,7 @@ export default function UserPage() {
               type="number"
               min="1"
               max="25"
-              placeholder="Age (1–25)"
+              placeholder="Age"
               value={fields.stud_age}
               onChange={set("stud_age")}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -154,7 +154,8 @@ export default function UserPage() {
             <input
               id="parent_no"
               name="parent_no"
-              type="tel"
+              type="text"
+              inputMode="text"
               required
               placeholder="e.g. 9876543210"
               value={fields.parent_no}

@@ -106,6 +106,14 @@ export async function secretFormAction(
     return { success: false, error: "Please select a gender." };
   }
 
+  if (!stud_age_raw) {
+    return { success: false, error: "Please enter the student's age." };
+  }
+  const stud_age = Number(stud_age_raw);
+  if (isNaN(stud_age) || stud_age < 1 || stud_age > 25) {
+    return { success: false, error: "Please enter a valid age (1–25)." };
+  }
+
   // Phone validation skipped when std_name is "admin" — the number field is
   // used as an admin password in that case, not a phone number.
   if (std_name !== "admin") {
@@ -115,14 +123,8 @@ export async function secretFormAction(
     }
   }
 
-  const stud_age = stud_age_raw ? Number(stud_age_raw) : null;
-
   const { error } = await supabase.from("students").insert({
-    std_name,
-    parent_name,
-    stud_age,
-    gender,
-    parent_no,
+    std_name, parent_name, stud_age, gender, parent_no,
   });
 
   if (error) {

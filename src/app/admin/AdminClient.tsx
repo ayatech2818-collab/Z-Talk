@@ -74,6 +74,50 @@ function StudentModal({
     error: null,
   });
 
+  const [fields, setFields] = useState({
+    std_name: initial?.std_name ?? "",
+    parent_name: initial?.parent_name ?? "",
+    stud_age: initial?.stud_age?.toString() ?? "",
+    gender: initial?.gender ?? "",
+    parent_no: initial?.parent_no ?? "",
+  });
+
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const set =
+    (key: keyof typeof fields) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      setFields((prev) => ({ ...prev, [key]: e.target.value }));
+      setFieldErrors((prev) => ({ ...prev, [key]: "" }));
+    };
+
+  const validate = (): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    if (!fields.std_name.trim()) errors.std_name = "Student name is required.";
+    if (!fields.parent_name.trim()) errors.parent_name = "Parent name is required.";
+    if (!fields.stud_age) {
+      errors.stud_age = "Age is required.";
+    } else {
+      const age = Number(fields.stud_age);
+      if (isNaN(age) || age < 1 || age > 100) errors.stud_age = "Enter a valid age (1–100).";
+    }
+    if (!fields.gender) errors.gender = "Please select a gender.";
+    if (!fields.parent_no.trim()) {
+      errors.parent_no = "Phone number is required.";
+    } else if (fields.parent_no.replace(/\D/g, "").length !== 10) {
+      errors.parent_no = "Enter a valid 10-digit number.";
+    }
+    return errors;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    const errors = validate();
+    if (Object.keys(errors).length > 0) {
+      e.preventDefault();
+      setFieldErrors(errors);
+    }
+  };
+
   useEffect(() => {
     if (state.success) onSuccess();
   }, [state.success, onSuccess]);
@@ -84,29 +128,31 @@ function StudentModal({
         <h2 className="mb-4 text-base font-semibold text-gray-900">
           {initial ? "Edit Student" : "Add Student"}
         </h2>
-        <form action={action} className="space-y-3">
+        <form action={action} onSubmit={handleSubmit} className="space-y-3">
           {initial && <input type="hidden" name="id" value={initial.id} />}
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Student Name</label>
             <input
               name="std_name"
-              defaultValue={initial?.std_name}
-              required
+              value={fields.std_name}
+              onChange={set("std_name")}
               placeholder="Enter student name"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.std_name ? "border-red-400" : "border-gray-300"}`}
             />
+            {fieldErrors.std_name && <p className="mt-1 text-xs text-red-500">{fieldErrors.std_name}</p>}
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Parent / Guardian Name</label>
             <input
               name="parent_name"
-              defaultValue={initial?.parent_name}
-              required
+              value={fields.parent_name}
+              onChange={set("parent_name")}
               placeholder="Enter parent name"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.parent_name ? "border-red-400" : "border-gray-300"}`}
             />
+            {fieldErrors.parent_name && <p className="mt-1 text-xs text-red-500">{fieldErrors.parent_name}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -117,25 +163,27 @@ function StudentModal({
                 type="number"
                 min={1}
                 max={100}
-                defaultValue={initial?.stud_age}
-                required
+                value={fields.stud_age}
+                onChange={set("stud_age")}
                 placeholder="Age"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.stud_age ? "border-red-400" : "border-gray-300"}`}
               />
+              {fieldErrors.stud_age && <p className="mt-1 text-xs text-red-500">{fieldErrors.stud_age}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Gender</label>
               <select
                 name="gender"
-                defaultValue={initial?.gender ?? ""}
-                required
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={fields.gender}
+                onChange={set("gender")}
+                className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.gender ? "border-red-400" : "border-gray-300"}`}
               >
                 <option value="" disabled>Select</option>
                 <option value="male">Male</option>
                 <option value="female">Female</option>
                 <option value="other">Other</option>
               </select>
+              {fieldErrors.gender && <p className="mt-1 text-xs text-red-500">{fieldErrors.gender}</p>}
             </div>
           </div>
 
@@ -143,12 +191,14 @@ function StudentModal({
             <label className="mb-1 block text-sm font-medium text-gray-700">Parent WhatsApp Number</label>
             <input
               name="parent_no"
-              type="tel"
-              defaultValue={initial?.parent_no}
-              required
+              type="text"
+              inputMode="text"
+              value={fields.parent_no}
+              onChange={set("parent_no")}
               placeholder="e.g. 9876543210"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.parent_no ? "border-red-400" : "border-gray-300"}`}
             />
+            {fieldErrors.parent_no && <p className="mt-1 text-xs text-red-500">{fieldErrors.parent_no}</p>}
           </div>
 
           {state.error && (
@@ -431,12 +481,6 @@ export default function AdminClient({
                         >
                           <IconEdit />
                         </button>
-                        <button
-                          onClick={() => setModal({ type: "delete", student })}
-                          className="rounded-lg bg-red-50 p-2 text-red-500"
-                        >
-                          <IconTrash />
-                        </button>
                       </div>
                     </div>
 
@@ -533,13 +577,6 @@ export default function AdminClient({
                                 className="rounded-lg bg-gray-100 p-1.5 text-gray-600 hover:bg-gray-200"
                               >
                                 <IconEdit />
-                              </button>
-                              <button
-                                onClick={() => setModal({ type: "delete", student })}
-                                title="Delete student"
-                                className="rounded-lg bg-red-50 p-1.5 text-red-500 hover:bg-red-100"
-                              >
-                                <IconTrash />
                               </button>
                             </div>
                           </td>
