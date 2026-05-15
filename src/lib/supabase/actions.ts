@@ -195,9 +195,9 @@ export async function adminSaveStudent(
   return { success: true, error: null };
 }
 
-// ── Admin CRUD — delete a student ────────────────────────────────────────────
+// ── Admin CRUD — deactivate a student (soft-delete) ──────────────────────────
 
-export async function adminDeleteStudent(
+export async function adminDeactivateStudent(
   prevState: { success: boolean; error: string | null },
   formData: FormData
 ): Promise<{ success: boolean; error: string | null }> {
@@ -209,16 +209,19 @@ export async function adminDeleteStudent(
   const id = (formData.get("id") as string)?.trim();
   if (!id) return { success: false, error: "No student ID provided." };
 
-  const { error } = await supabase.from("students").delete().eq("id", id);
+  const { error } = await supabase
+    .from("students")
+    .update({ is_active: false })
+    .eq("id", id);
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin");
   return { success: true, error: null };
 }
 
-// ── Admin CRUD — bulk delete students ────────────────────────────────────────
+// ── Admin CRUD — bulk deactivate students (soft-delete) ──────────────────────
 
-export async function adminDeleteStudents(
+export async function adminDeactivateStudents(
   ids: string[]
 ): Promise<{ success: boolean; error: string | null }> {
   const isAdmin = await checkAdminAuth();
@@ -227,14 +230,38 @@ export async function adminDeleteStudents(
   if (!ids.length) return { success: false, error: "No students selected." };
 
   const supabase = await createClient();
-  const { error } = await supabase.from("students").delete().in("id", ids);
+  const { error } = await supabase
+    .from("students")
+    .update({ is_active: false })
+    .in("id", ids);
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin");
   return { success: true, error: null };
 }
 
-// ── Fetch all students (admin only) ──────────────────────────────────────────
+// ── Admin CRUD — restore a deactivated student ────────────────────────────────
+
+export async function adminRestoreStudent(
+  ids: string[]
+): Promise<{ success: boolean; error: string | null }> {
+  const isAdmin = await checkAdminAuth();
+  if (!isAdmin) return { success: false, error: "Unauthorized." };
+
+  if (!ids.length) return { success: false, error: "No students selected." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("students")
+    .update({ is_active: true })
+    .in("id", ids);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/admin");
+  return { success: true, error: null };
+}
+
+// ── Fetch active students (admin dashboard) ───────────────────────────────────
 
 export async function getStudents() {
   const supabase = await createClient();
@@ -242,6 +269,25 @@ export async function getStudents() {
   const { data, error } = await supabase
     .from("students")
     .select("*")
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data, error: null };
+}
+
+// ── Fetch deactivated students (history view) ─────────────────────────────────
+
+export async function getInactiveStudents() {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("students")
+    .select("*")
+    .eq("is_active", false)
     .order("created_at", { ascending: false });
 
   if (error) {

@@ -5,8 +5,9 @@ import { useActionState } from "react";
 import { useRouter } from "next/navigation";
 import {
   adminSaveStudent,
-  adminDeleteStudent,
-  adminDeleteStudents,
+  adminDeactivateStudent,
+  adminDeactivateStudents,
+  adminRestoreStudent,
   adminLogout,
 } from "@/lib/supabase/actions";
 import type { Student } from "./page";
@@ -30,7 +31,7 @@ type ModalState =
   | { type: null }
   | { type: "add" }
   | { type: "edit"; student: Student }
-  | { type: "delete"; student: Student };
+  | { type: "deactivate"; student: Student };
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,22 @@ function IconTrash() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-2">
       <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  );
+}
+
+function IconHistory() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
+function IconRestore() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
     </svg>
   );
 }
@@ -227,9 +244,9 @@ function StudentModal({
   );
 }
 
-// ── Delete confirm modal ──────────────────────────────────────────────────────
+// ── Deactivate confirm modal ──────────────────────────────────────────────────
 
-function DeleteModal({
+function DeactivateModal({
   student,
   onClose,
   onSuccess,
@@ -238,7 +255,7 @@ function DeleteModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const [state, action, pending] = useActionState(adminDeleteStudent, {
+  const [state, action, pending] = useActionState(adminDeactivateStudent, {
     success: false,
     error: null,
   });
@@ -250,11 +267,11 @@ function DeleteModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
       <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-2xl">
-        <h2 className="mb-1.5 text-base font-semibold text-gray-900">Delete Student</h2>
+        <h2 className="mb-1.5 text-base font-semibold text-gray-900">Remove Student</h2>
         <p className="mb-4 text-sm text-gray-600">
           Remove{" "}
           <span className="font-semibold text-gray-900">{student.std_name}</span>{" "}
-          from records? This cannot be undone.
+          from active records? You can restore them later from History.
         </p>
         <form action={action}>
           <input type="hidden" name="id" value={student.id} />
@@ -274,10 +291,110 @@ function DeleteModal({
               disabled={pending}
               className="flex-1 rounded-lg bg-red-600 py-2.5 text-sm font-medium text-white disabled:opacity-60"
             >
-              {pending ? "Deleting…" : "Delete"}
+              {pending ? "Removing…" : "Remove"}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ── History panel ─────────────────────────────────────────────────────────────
+
+function HistoryPanel({
+  inactiveStudents,
+  onClose,
+  onRestore,
+}: {
+  inactiveStudents: Student[];
+  onClose: () => void;
+  onRestore: () => void;
+}) {
+  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  const handleRestore = async (id: string) => {
+    setRestoringIds((prev) => new Set(prev).add(id));
+    setError(null);
+    const result = await adminRestoreStudent([id]);
+    if (result.success) {
+      onRestore();
+    } else {
+      setError(result.error);
+      setRestoringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
+      <div className="w-full sm:max-w-2xl rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Removed Students</h2>
+            <p className="text-xs text-gray-500 mt-0.5">{inactiveStudents.length} student{inactiveStudents.length !== 1 ? "s" : ""} in history</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700"
+          >
+            Close
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-2">
+          {error && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
+          )}
+
+          {inactiveStudents.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-sm text-gray-400">No removed students yet.</p>
+            </div>
+          ) : (
+            inactiveStudents.map((student) => {
+              const isRestoring = restoringIds.has(student.id);
+              return (
+                <div
+                  key={student.id}
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-700 truncate">{student.std_name}</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-gray-400">
+                      <span>{student.parent_name}</span>
+                      <span>Age {student.stud_age}</span>
+                      <span className="capitalize">{student.gender}</span>
+                      <span>{student.parent_no}</span>
+                      <span>
+                        {new Date(student.created_at).toLocaleDateString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleRestore(student.id)}
+                    disabled={isRestoring}
+                    title="Restore student"
+                    className="flex items-center gap-1.5 rounded-lg bg-green-100 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-200 disabled:opacity-50 shrink-0"
+                  >
+                    <IconRestore />
+                    {isRestoring ? "Restoring…" : "Restore"}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );
@@ -287,9 +404,11 @@ function DeleteModal({
 
 export default function AdminClient({
   students,
+  inactiveStudents,
   fetchError,
 }: {
   students: Student[];
+  inactiveStudents: Student[];
   fetchError: string | null;
 }) {
   const router = useRouter();
@@ -298,6 +417,7 @@ export default function AdminClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState("");
   const [modal, setModal] = useState<ModalState>({ type: null });
+  const [showHistory, setShowHistory] = useState(false);
 
   const refresh = () => {
     setSelectedIds(new Set());
@@ -318,9 +438,9 @@ export default function AdminClient({
 
   const selectedStudents = students.filter((s) => selectedIds.has(s.id));
 
-  const handleBulkDelete = async () => {
-    if (!window.confirm(`Delete ${selectedStudents.length} student${selectedStudents.length !== 1 ? "s" : ""}? This cannot be undone.`)) return;
-    const result = await adminDeleteStudents([...selectedIds]);
+  const handleBulkDeactivate = async () => {
+    if (!window.confirm(`Remove ${selectedStudents.length} student${selectedStudents.length !== 1 ? "s" : ""} from active records?`)) return;
+    const result = await adminDeactivateStudents([...selectedIds]);
     if (result.success) refresh();
     else alert(result.error);
   };
@@ -347,6 +467,18 @@ export default function AdminClient({
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowHistory(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 relative"
+            >
+              <IconHistory />
+              History
+              {inactiveStudents.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
+                  {inactiveStudents.length > 9 ? "9+" : inactiveStudents.length}
+                </span>
+              )}
+            </button>
             <button
               onClick={() => setModal({ type: "add" })}
               className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white"
@@ -390,7 +522,7 @@ export default function AdminClient({
         {/* ── Empty ── */}
         {!fetchError && students.length === 0 && (
           <div className="rounded-xl border border-dashed border-gray-300 bg-white py-16 text-center">
-            <p className="text-gray-400 text-sm">No students registered yet.</p>
+            <p className="text-gray-400 text-sm">No active students.</p>
             <button
               onClick={() => setModal({ type: "add" })}
               className="mt-4 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white"
@@ -409,11 +541,11 @@ export default function AdminClient({
                   {selectedStudents.length} selected
                 </span>
                 <button
-                  onClick={handleBulkDelete}
+                  onClick={handleBulkDeactivate}
                   className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white"
                 >
                   <IconTrash />
-                  Delete
+                  Remove
                 </button>
                 <button
                   onClick={() => setSelectedIds(new Set())}
@@ -480,6 +612,12 @@ export default function AdminClient({
                           className="rounded-lg bg-gray-100 p-2 text-gray-600"
                         >
                           <IconEdit />
+                        </button>
+                        <button
+                          onClick={() => setModal({ type: "deactivate", student })}
+                          className="rounded-lg bg-red-50 p-2 text-red-500"
+                        >
+                          <IconTrash />
                         </button>
                       </div>
                     </div>
@@ -578,6 +716,13 @@ export default function AdminClient({
                               >
                                 <IconEdit />
                               </button>
+                              <button
+                                onClick={() => setModal({ type: "deactivate", student })}
+                                title="Remove student"
+                                className="rounded-lg bg-red-50 p-1.5 text-red-500 hover:bg-red-100"
+                              >
+                                <IconTrash />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -599,11 +744,18 @@ export default function AdminClient({
           onSuccess={onMutationSuccess}
         />
       )}
-      {modal.type === "delete" && (
-        <DeleteModal
+      {modal.type === "deactivate" && (
+        <DeactivateModal
           student={modal.student}
           onClose={closeModal}
           onSuccess={onMutationSuccess}
+        />
+      )}
+      {showHistory && (
+        <HistoryPanel
+          inactiveStudents={inactiveStudents}
+          onClose={() => setShowHistory(false)}
+          onRestore={() => { setShowHistory(false); refresh(); }}
         />
       )}
     </div>
