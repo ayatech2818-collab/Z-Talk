@@ -261,6 +261,26 @@ export async function adminRestoreStudent(
   return { success: true, error: null };
 }
 
+// ── Admin CRUD — mark WhatsApp as sent ────────────────────────────────────────
+
+export async function adminMarkWhatsAppSent(
+  studentId: string
+): Promise<{ success: boolean; error: string | null }> {
+  const isAdmin = await checkAdminAuth();
+  if (!isAdmin) return { success: false, error: "Unauthorized." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("students")
+    .update({ whatsapp_sent: true })
+    .eq("id", studentId);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/admin");
+  return { success: true, error: null };
+}
+
 // ── Fetch active students (admin dashboard) ───────────────────────────────────
 
 export async function getStudents() {
@@ -270,6 +290,7 @@ export async function getStudents() {
     .from("students")
     .select("*")
     .eq("is_active", true)
+    .order("whatsapp_sent", { ascending: true })
     .order("created_at", { ascending: false });
 
   if (error) {

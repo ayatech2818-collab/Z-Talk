@@ -9,6 +9,7 @@ import {
   adminDeactivateStudents,
   adminRestoreStudent,
   adminLogout,
+  adminMarkWhatsAppSent,
 } from "@/lib/supabase/actions";
 import type { Student } from "./page";
 
@@ -415,6 +416,9 @@ export default function AdminClient({
   const [, startTransition] = useTransition();
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const [waFilter, setWAFilter] = useState<"all" | "sent" | "unsent">("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [message, setMessage] = useState("");
   const [modal, setModal] = useState<ModalState>({ type: null });
   const [showHistory, setShowHistory] = useState(false);
@@ -424,10 +428,25 @@ export default function AdminClient({
     startTransition(() => router.refresh());
   };
 
-  const allSelected = students.length > 0 && selectedIds.size === students.length;
+  const visibleStudents = students
+    .filter((s) => {
+      if (waFilter === "all") return true;
+      return waFilter === "sent" ? s.whatsapp_sent : !s.whatsapp_sent;
+    })
+    .filter((s) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        s.std_name.toLowerCase().includes(q) ||
+        s.parent_name.toLowerCase().includes(q) ||
+        s.parent_no.includes(q)
+      );
+    });
+
+  const allSelected = visibleStudents.length > 0 && selectedIds.size === visibleStudents.length;
 
   const toggleAll = () =>
-    setSelectedIds(allSelected ? new Set() : new Set(students.map((s) => s.id)));
+    setSelectedIds(allSelected ? new Set() : new Set(visibleStudents.map((s) => s.id)));
 
   const toggleOne = (id: string) =>
     setSelectedIds((prev) => {
@@ -443,6 +462,21 @@ export default function AdminClient({
     const result = await adminDeactivateStudents([...selectedIds]);
     if (result.success) refresh();
     else alert(result.error);
+  };
+
+  const handleWhatsAppClick = (studentId: string, phone: string) => {
+    if (!canSendWa) return;
+    setSentIds((prev) => new Set(prev).add(studentId));
+    window.open(buildWaUrl(phone, message), "_blank");
+    adminMarkWhatsAppSent(studentId).then((res) => {
+      if (!res.success) {
+        setSentIds((prev) => {
+          const next = new Set(prev);
+          next.delete(studentId);
+          return next;
+        });
+      }
+    });
   };
 
   const closeModal = () => setModal({ type: null });
@@ -466,29 +500,29 @@ export default function AdminClient({
               {students.length} student{students.length !== 1 ? "s" : ""}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => setShowHistory(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 relative"
+              className="flex items-center gap-1 rounded-lg border border-gray-300 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 relative"
             >
               <IconHistory />
-              History
+              <span className="hidden sm:inline">History</span>
               {inactiveStudents.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
+                <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 sm:h-4 sm:w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] sm:text-[10px] font-bold text-white">
                   {inactiveStudents.length > 9 ? "9+" : inactiveStudents.length}
                 </span>
               )}
             </button>
             <button
               onClick={() => setModal({ type: "add" })}
-              className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white"
+              className="whitespace-nowrap rounded-lg bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white"
             >
               + Add
             </button>
             <form action={adminLogout}>
               <button
                 type="submit"
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700"
+                className="whitespace-nowrap rounded-lg border border-gray-300 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-700"
               >
                 Logout
               </button>
@@ -512,6 +546,56 @@ export default function AdminClient({
           <p className="mt-1 text-xs text-gray-400">{message.length} characters</p>
         </div>
 
+        {/* ── Search ── */}
+        {students.length > 0 && (
+          <div className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 shadow-sm">
+            <div className="flex items-center gap-2">
+              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-none stroke-current stroke-2 text-gray-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name, parent, or phone..."
+                className="w-full bg-transparent text-sm outline-none placeholder:text-gray-400"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── WhatsApp filter ── */}
+        {students.length > 0 && (
+          <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 shadow-sm">
+            <span className="text-xs font-medium text-gray-500">WhatsApp</span>
+            {(["all", "sent", "unsent"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setWAFilter(f)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  waFilter === f
+                    ? "bg-green-600 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {f === "all" ? "All" : f === "sent" ? "✓ Shared" : "○ Not Shared"}
+              </button>
+            ))}
+            {(waFilter !== "all" || searchQuery) && (
+              <span className="ml-auto text-xs text-gray-400">
+                {visibleStudents.length} of {students.length}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* ── Error ── */}
         {fetchError && (
           <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -532,7 +616,17 @@ export default function AdminClient({
           </div>
         )}
 
-        {students.length > 0 && (
+        {!fetchError && students.length > 0 && visibleStudents.length === 0 && (
+          <div className="rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center">
+            <p className="text-gray-400 text-sm">
+              {searchQuery
+                ? `No students match "${searchQuery}".`
+                : "No students match this filter."}
+            </p>
+          </div>
+        )}
+
+        {students.length > 0 && visibleStudents.length > 0 && (
           <>
             {/* ── Bulk action bar ── */}
             {selectedStudents.length > 0 && (
@@ -569,7 +663,7 @@ export default function AdminClient({
                 <span className="text-xs text-gray-400">Select all</span>
               </div>
 
-              {students.map((student) => {
+              {visibleStudents.map((student) => {
                 const isSelected = selectedIds.has(student.id);
                 return (
                   <div
@@ -594,19 +688,25 @@ export default function AdminClient({
                       </div>
                       {/* Action buttons */}
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <a
-                          href={canSendWa ? buildWaUrl(student.parent_no, message) : undefined}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => { if (!canSendWa) e.preventDefault(); }}
-                          className={`rounded-lg p-2 ${
+                        <button
+                          onClick={() => handleWhatsAppClick(student.id, student.parent_no)}
+                          disabled={!canSendWa}
+                          title={canSendWa ? `WhatsApp ${student.parent_name}` : "Type a message first"}
+                          className={`relative rounded-lg p-2 ${
                             canSendWa
                               ? "bg-green-100 text-green-700"
                               : "cursor-not-allowed bg-gray-100 text-gray-300"
                           }`}
                         >
                           <IconWhatsApp />
-                        </a>
+                          {(student.whatsapp_sent || sentIds.has(student.id)) && (
+                            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-green-500 text-white">
+                              <svg viewBox="0 0 24 24" className="h-2.5 w-2.5 fill-none stroke-current stroke-3">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            </span>
+                          )}
+                        </button>
                         <button
                           onClick={() => setModal({ type: "edit", student })}
                           className="rounded-lg bg-gray-100 p-2 text-gray-600"
@@ -643,7 +743,18 @@ export default function AdminClient({
             {/* ── Desktop: table ── */}
             <div className="hidden md:block overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="w-full table-fixed divide-y divide-gray-200">
+                  <colgroup>
+                    <col className="w-10" />
+                    <col className="w-8" />
+                    <col />
+                    <col />
+                    <col className="w-14" />
+                    <col className="w-16" />
+                    <col className="w-[145px]" />
+                    <col className="w-[135px]" />
+                    <col className="w-[128px]" />
+                  </colgroup>
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-3">
@@ -665,7 +776,7 @@ export default function AdminClient({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 bg-white">
-                    {students.map((student, index) => {
+                    {visibleStudents.map((student, index) => {
                       const isSelected = selectedIds.has(student.id);
                       return (
                         <tr
@@ -681,12 +792,12 @@ export default function AdminClient({
                             />
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-400">{index + 1}</td>
-                          <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">{student.std_name}</td>
-                          <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{student.parent_name}</td>
+                          <td className="truncate px-4 py-3 text-sm font-medium text-gray-900" title={student.std_name}>{student.std_name}</td>
+                          <td className="truncate px-4 py-3 text-sm text-gray-700" title={student.parent_name}>{student.parent_name}</td>
                           <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{student.stud_age}</td>
                           <td className="whitespace-nowrap px-4 py-3 text-sm capitalize text-gray-700">{student.gender}</td>
-                          <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{student.parent_no}</td>
-                          <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                          <td className="truncate px-4 py-3 text-sm text-gray-700">{student.parent_no}</td>
+                          <td className="truncate px-4 py-3 text-sm text-gray-500">
                             {new Date(student.created_at).toLocaleDateString("en-IN", {
                               day: "2-digit",
                               month: "short",
@@ -695,20 +806,25 @@ export default function AdminClient({
                           </td>
                           <td className="whitespace-nowrap px-4 py-3">
                             <div className="flex items-center gap-1.5">
-                              <a
-                                href={canSendWa ? buildWaUrl(student.parent_no, message) : undefined}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => { if (!canSendWa) e.preventDefault(); }}
+                              <button
+                                onClick={() => handleWhatsAppClick(student.id, student.parent_no)}
+                                disabled={!canSendWa}
                                 title={canSendWa ? `WhatsApp ${student.parent_name}` : "Type a message first"}
-                                className={`rounded-lg p-1.5 transition-colors ${
+                                className={`relative rounded-lg p-1.5 transition-colors ${
                                   canSendWa
                                     ? "bg-green-100 text-green-700 hover:bg-green-200"
                                     : "cursor-not-allowed bg-gray-100 text-gray-400"
                                 }`}
                               >
                                 <IconWhatsApp />
-                              </a>
+                                {(student.whatsapp_sent || sentIds.has(student.id)) && (
+                                  <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-green-500 text-white">
+                                    <svg viewBox="0 0 24 24" className="h-2.5 w-2.5 fill-none stroke-current stroke-3">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </span>
+                                )}
+                              </button>
                               <button
                                 onClick={() => setModal({ type: "edit", student })}
                                 title="Edit student"

@@ -13,6 +13,7 @@ export type Student = {
   parent_no: string;
   created_at: string;
   is_active: boolean;
+  whatsapp_sent: boolean;
 };
 
 export default async function AdminPage() {
